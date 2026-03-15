@@ -2,14 +2,10 @@ import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { useAuthStore } from "@/store/use-auth";
 import { useEffect } from "react";
 import { MouseSpotlight } from "@/components/mouse-spotlight";
 import { CursorTrail } from "@/components/cursor-trail";
 
-// Pages
-import Login from "@/pages/login";
-import Register from "@/pages/register";
 import Dashboard from "@/pages/dashboard";
 import Watch from "@/pages/watch";
 import Upload from "@/pages/upload";
@@ -24,15 +20,6 @@ const queryClient = new QueryClient({
   },
 });
 
-// Auth bypassed for preview — all routes render freely
-function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
-  return <Component />;
-}
-
-function AuthRoute({ component: Component }: { component: React.ComponentType }) {
-  return <Component />;
-}
-
 function RootRedirect() {
   const [_, setLocation] = useLocation();
   useEffect(() => { setLocation("/dashboard"); }, [setLocation]);
@@ -43,27 +30,9 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={RootRedirect} />
-      
-      {/* Public/Auth Routes */}
-      <Route path="/login">
-        <AuthRoute component={Login} />
-      </Route>
-      <Route path="/register">
-        <AuthRoute component={Register} />
-      </Route>
-
-      {/* Protected Routes */}
-      <Route path="/dashboard">
-        <ProtectedRoute component={Dashboard} />
-      </Route>
-      <Route path="/watch/:id">
-        <ProtectedRoute component={Watch} />
-      </Route>
-      <Route path="/upload">
-        <ProtectedRoute component={Upload} />
-      </Route>
-
-      {/* 404 */}
+      <Route path="/dashboard" component={Dashboard} />
+      <Route path="/watch/:id" component={Watch} />
+      <Route path="/upload" component={Upload} />
       <Route component={NotFound} />
     </Switch>
   );
