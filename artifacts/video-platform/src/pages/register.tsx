@@ -31,7 +31,7 @@ export default function Register() {
     mutation: {
       onSuccess: (data) => {
         setToken(data.token);
-        toast({ title: "Account created!", description: "Welcome to ByteStream." });
+        toast({ variant: "success", title: "Account created!", description: "Welcome to ByteStream." });
         setLocation("/dashboard");
       },
       onError: (error: any) => {

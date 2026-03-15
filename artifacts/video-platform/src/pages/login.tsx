@@ -30,7 +30,7 @@ export default function Login() {
     mutation: {
       onSuccess: (data) => {
         setToken(data.token);
-        toast({ title: "Welcome back!", description: "Successfully logged in." });
+        toast({ variant: "success", title: "Welcome back!", description: "Successfully logged in." });
         setLocation("/dashboard");
       },
       onError: (error: any) => {

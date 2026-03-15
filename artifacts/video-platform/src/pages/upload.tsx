@@ -63,6 +63,7 @@ export default function Upload() {
       });
 
       toast({ 
+        variant: "success",
         title: "Upload successful", 
         description: "Your video is now processing." 
       });
