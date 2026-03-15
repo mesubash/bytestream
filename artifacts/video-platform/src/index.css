@@ -78,6 +78,7 @@
 @layer base {
   * {
     @apply border-border selection:bg-primary/30 selection:text-primary;
+    cursor: none !important;
   }
   body {
     @apply bg-background text-foreground font-sans antialiased overflow-x-hidden;

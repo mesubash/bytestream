@@ -1,43 +1,49 @@
 import { useEffect, useRef } from "react";
-import { useMousePosition } from "@/hooks/use-mouse-position";
 
 export function MouseSpotlight() {
-  const { x, y } = useMousePosition();
-  const spotlightRef = useRef<HTMLDivElement>(null);
-  
-  // Current position for lerping
-  const currentPos = useRef({ x: 0, y: 0 });
+  const ref = useRef<HTMLDivElement>(null);
+  const pos = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+  const curr = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
 
   useEffect(() => {
-    let animationFrameId: number;
-    
-    const render = () => {
-      // Lerp towards target position
-      currentPos.current.x += (x - currentPos.current.x) * 0.15;
-      currentPos.current.y += (y - currentPos.current.y) * 0.15;
-      
-      if (spotlightRef.current) {
-        spotlightRef.current.style.transform = `translate(${currentPos.current.x}px, ${currentPos.current.y}px) translate(-50%, -50%)`;
-      }
-      
-      animationFrameId = requestAnimationFrame(render);
+    const el = ref.current;
+    if (!el) return;
+
+    const onMove = (e: MouseEvent) => {
+      pos.current = { x: e.clientX, y: e.clientY };
     };
-    
-    render();
-    
+    window.addEventListener("mousemove", onMove);
+
+    let rafId: number;
+    const tick = () => {
+      curr.current.x += (pos.current.x - curr.current.x) * 0.06;
+      curr.current.y += (pos.current.y - curr.current.y) * 0.06;
+      el.style.left = `${curr.current.x}px`;
+      el.style.top = `${curr.current.y}px`;
+      rafId = requestAnimationFrame(tick);
+    };
+    tick();
+
     return () => {
-      cancelAnimationFrame(animationFrameId);
+      window.removeEventListener("mousemove", onMove);
+      cancelAnimationFrame(rafId);
     };
-  }, [x, y]);
+  }, []);
 
   return (
     <div
-      ref={spotlightRef}
-      className="pointer-events-none fixed left-0 top-0 z-0 h-[600px] w-[600px] rounded-full"
+      ref={ref}
+      className="pointer-events-none fixed z-0"
       style={{
-        background: "radial-gradient(circle, rgba(6, 182, 212, 0.08) 0%, transparent 60%)",
+        width: "700px",
+        height: "700px",
+        borderRadius: "50%",
+        top: 0,
+        left: 0,
         transform: "translate(-50%, -50%)",
-        willChange: "transform",
+        background:
+          "radial-gradient(circle, rgba(6,182,212,0.055) 0%, rgba(6,182,212,0.02) 35%, transparent 70%)",
+        willChange: "left, top",
       }}
     />
   );
