@@ -45,7 +45,8 @@ function serializeVideo(video: typeof videosTable.$inferSelect) {
   };
 }
 
-router.get("/", requireAuth, async (req: AuthRequest, res) => {
+router.get("/", async (req: AuthRequest, res) => {
+  req.userId = 1;
   try {
     const videos = await db.select().from(videosTable).orderBy(videosTable.uploadedAt);
     res.json(videos.map(serializeVideo));
@@ -55,7 +56,8 @@ router.get("/", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-router.post("/upload", requireAuth, upload.single("file"), async (req: AuthRequest, res) => {
+router.post("/upload", upload.single("file"), async (req: AuthRequest, res) => {
+  req.userId = req.userId ?? 1;
   const { title } = req.body;
   if (!title || typeof title !== "string") {
     res.status(400).json({ error: "Bad request", message: "Title is required" });
@@ -89,7 +91,7 @@ router.post("/upload", requireAuth, upload.single("file"), async (req: AuthReque
   }
 });
 
-router.get("/:id", requireAuth, async (req: AuthRequest, res) => {
+router.get("/:id", async (req: AuthRequest, res) => {
   const id = parseInt(req.params.id ?? "");
   if (isNaN(id)) {
     res.status(400).json({ error: "Bad request", message: "Invalid video ID" });
@@ -109,7 +111,7 @@ router.get("/:id", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-router.get("/:id/manifest", requireAuth, async (req: AuthRequest, res) => {
+router.get("/:id/manifest", async (req: AuthRequest, res) => {
   const id = parseInt(req.params.id ?? "");
   if (isNaN(id)) {
     res.status(400).json({ error: "Bad request", message: "Invalid video ID" });

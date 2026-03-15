@@ -22,50 +22,18 @@ const queryClient = new QueryClient({
   },
 });
 
-// Protected Route Wrapper
+// Auth bypassed for preview — all routes render freely
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
-  const token = useAuthStore((s) => s.token);
-  const [_, setLocation] = useLocation();
-
-  useEffect(() => {
-    if (!token) {
-      setLocation("/login");
-    }
-  }, [token, setLocation]);
-
-  if (!token) return null;
-
   return <Component />;
 }
 
-// Auth Route Wrapper (redirects to dashboard if already logged in)
 function AuthRoute({ component: Component }: { component: React.ComponentType }) {
-  const token = useAuthStore((s) => s.token);
-  const [_, setLocation] = useLocation();
-
-  useEffect(() => {
-    if (token) {
-      setLocation("/dashboard");
-    }
-  }, [token, setLocation]);
-
-  if (token) return null;
-
   return <Component />;
 }
 
 function RootRedirect() {
-  const token = useAuthStore((s) => s.token);
   const [_, setLocation] = useLocation();
-
-  useEffect(() => {
-    if (token) {
-      setLocation("/dashboard");
-    } else {
-      setLocation("/login");
-    }
-  }, [token, setLocation]);
-
+  useEffect(() => { setLocation("/dashboard"); }, [setLocation]);
   return null;
 }
 
