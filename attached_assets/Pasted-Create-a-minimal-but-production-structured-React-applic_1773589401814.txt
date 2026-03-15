@@ -1,0 +1,173 @@
+Create a minimal but production-structured React application using Next.js (App Router) and TypeScript.
+
+The application is a simple Video Streaming Platform UI that communicates with a backend API. The frontend must be clean, minimal, and designed for easy backend integration.
+
+Tech requirements:
+- Next.js 14+
+- TypeScript
+- Tailwind CSS
+- hls.js for video streaming
+- Axios for API requests
+- React Query (TanStack Query) for API state management
+- JWT authentication support
+- Environment variable based API base URL
+- Clean modular folder architecture
+
+Design style:
+Minimal, modern, dark theme, inspired by Netflix or Vimeo but much simpler.
+
+Pages required:
+
+1. Login Page
+Route: /login
+
+Features:
+- Email + password login form
+- Form validation
+- Submit to POST /auth/login
+- Store JWT token in httpOnly cookie or localStorage
+- Redirect to dashboard after login
+- Show loading and error states
+
+2. Dashboard Page
+Route: /dashboard
+
+Features:
+- Fetch videos from GET /videos
+- Display video cards in grid
+- Each card shows:
+  - thumbnail
+  - title
+  - duration
+- Clicking card navigates to /watch/{videoId}
+
+3. Watch Page
+Route: /watch/[id]
+
+Features:
+- Video player component
+- Uses hls.js to play HLS stream
+- Loads manifest from:
+  GET /videos/{id}/manifest
+
+Video player should support:
+- play / pause
+- progress bar
+- volume control
+- fullscreen
+- loading indicator
+- buffering indicator
+
+4. Upload Page
+Route: /upload
+
+Features:
+- Video upload form
+- Title field
+- Video file input
+- Upload progress bar
+- POST /videos/upload
+
+Components to generate:
+
+VideoPlayer
+VideoCard
+Navbar
+ProtectedRoute
+Loader
+ErrorMessage
+
+Architecture requirements:
+
+Use the following folder structure:
+
+src/
+  app/
+    login/
+    dashboard/
+    watch/[id]/
+    upload/
+
+  components/
+    VideoPlayer.tsx
+    VideoCard.tsx
+    Navbar.tsx
+
+  services/
+    apiClient.ts
+    videoService.ts
+    authService.ts
+
+  hooks/
+    useVideos.ts
+    useAuth.ts
+
+  context/
+    AuthContext.tsx
+
+  types/
+    video.ts
+    auth.ts
+
+API Integration design:
+
+Create a centralized Axios client:
+
+apiClient.ts
+
+Use:
+process.env.NEXT_PUBLIC_API_URL
+
+Example endpoints expected:
+
+POST /auth/login
+GET /videos
+GET /videos/{id}
+GET /videos/{id}/manifest
+POST /videos/upload
+
+Auth system:
+
+- Store JWT token
+- Attach token to API requests automatically
+- Redirect to login if token missing
+- Protected routes for dashboard/watch/upload
+
+Video Player implementation:
+
+Use hls.js like:
+
+If HLS supported:
+load manifest URL
+attach to HTML5 video element
+
+If browser supports native HLS (Safari):
+load manifest directly.
+
+UI Requirements:
+
+- Responsive layout
+- Dark theme
+- Clean spacing
+- No heavy animations
+- Focus on functionality
+
+Navbar:
+
+Contains:
+Dashboard
+Upload
+Logout
+
+Logout clears token and redirects to login.
+
+Additional requirements:
+
+- Show loading states during API calls
+- Handle API errors gracefully
+- Use React Query for caching
+- Make the UI minimal but clean
+- Do not overbuild the design
+- Focus on maintainable architecture
+
+Generate all code files needed to run the application.

@@ -1,0 +1,19 @@
+packages:
+  "hls.js": "Required for HLS video streaming support"
+  "axios": "Required for upload progress tracking"
+  "zustand": "Lightweight global state management for auth"
+  "react-hook-form": "Form state management"
+  "@hookform/resolvers": "Zod validation integration for forms"
+  "date-fns": "Human-readable date formatting"
+  "clsx": "Utility for constructing className strings conditionally"
+  "tailwind-merge": "Utility for merging tailwind classes without style conflicts"
+
+images:
+  - path: "artifacts/video-platform/public/images/auth-bg.png"
+    description: "Abstract minimal dark 3D geometric background with subtle cyan and teal glowing edge highlights, highly professional and cinematic, 8k"
+    aspect_ratio: "16:9"
+
+notes:
+  - Authentication tokens are stored in localStorage via Zustand persist.
+  - Video upload uses Axios directly to access the onUploadProgress event for the UI, bypassing the Orval generated fetch hook for that specific endpoint.
+  - All other API calls use the generated React Query hooks from @workspace/api-client-react.

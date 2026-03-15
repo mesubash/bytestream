@@ -1,0 +1,115 @@
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Toaster } from "@/components/ui/toaster";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { useAuthStore } from "@/store/use-auth";
+import { useEffect } from "react";
+
+// Pages
+import Login from "@/pages/login";
+import Register from "@/pages/register";
+import Dashboard from "@/pages/dashboard";
+import Watch from "@/pages/watch";
+import Upload from "@/pages/upload";
+import NotFound from "@/pages/not-found";
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
+
+// Protected Route Wrapper
+function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
+  const token = useAuthStore((s) => s.token);
+  const [_, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!token) {
+      setLocation("/login");
+    }
+  }, [token, setLocation]);
+
+  if (!token) return null;
+
+  return <Component />;
+}
+
+// Auth Route Wrapper (redirects to dashboard if already logged in)
+function AuthRoute({ component: Component }: { component: React.ComponentType }) {
+  const token = useAuthStore((s) => s.token);
+  const [_, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (token) {
+      setLocation("/dashboard");
+    }
+  }, [token, setLocation]);
+
+  if (token) return null;
+
+  return <Component />;
+}
+
+function RootRedirect() {
+  const token = useAuthStore((s) => s.token);
+  const [_, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (token) {
+      setLocation("/dashboard");
+    } else {
+      setLocation("/login");
+    }
+  }, [token, setLocation]);
+
+  return null;
+}
+
+function Router() {
+  return (
+    <Switch>
+      <Route path="/" component={RootRedirect} />
+      
+      {/* Public/Auth Routes */}
+      <Route path="/login">
+        <AuthRoute component={Login} />
+      </Route>
+      <Route path="/register">
+        <AuthRoute component={Register} />
+      </Route>
+
+      {/* Protected Routes */}
+      <Route path="/dashboard">
+        <ProtectedRoute component={Dashboard} />
+      </Route>
+      <Route path="/watch/:id">
+        <ProtectedRoute component={Watch} />
+      </Route>
+      <Route path="/upload">
+        <ProtectedRoute component={Upload} />
+      </Route>
+
+      {/* 404 */}
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
+
+function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+          <Router />
+        </WouterRouter>
+        <Toaster />
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+}
+
+export default App;
