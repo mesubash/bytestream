@@ -2,7 +2,7 @@
 
 ## Overview
 
-pnpm workspace monorepo using TypeScript. Video Streaming Platform with a React frontend and Express backend.
+pnpm workspace monorepo using TypeScript. **ByteStream** — a video streaming platform with a React frontend and Express backend.
 
 ## Stack
 

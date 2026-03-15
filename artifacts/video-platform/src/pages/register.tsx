@@ -31,7 +31,7 @@ export default function Register() {
     mutation: {
       onSuccess: (data) => {
         setToken(data.token);
-        toast({ title: "Account created!", description: "Welcome to StreamVault." });
+        toast({ title: "Account created!", description: "Welcome to ByteStream." });
         setLocation("/dashboard");
       },
       onError: (error: any) => {
@@ -69,7 +69,7 @@ export default function Register() {
             <div className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center shadow-[0_0_20px_rgba(6,182,212,0.4)]">
               <Play className="w-5 h-5 text-primary-foreground ml-0.5" />
             </div>
-            <span className="font-display font-bold text-2xl text-white">StreamVault</span>
+            <span className="font-display font-bold text-2xl text-white">ByteStream</span>
           </div>
 
           <div className="mb-8">

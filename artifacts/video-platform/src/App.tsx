@@ -4,6 +4,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuthStore } from "@/store/use-auth";
 import { useEffect } from "react";
+import { MouseSpotlight } from "@/components/mouse-spotlight";
+import { CursorTrail } from "@/components/cursor-trail";
 
 // Pages
 import Login from "@/pages/login";
@@ -71,6 +73,8 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
+        <MouseSpotlight />
+        <CursorTrail />
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Router />
         </WouterRouter>

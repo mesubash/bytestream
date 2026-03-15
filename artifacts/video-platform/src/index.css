@@ -30,6 +30,23 @@
   --radius-sm: calc(var(--radius) - 4px);
   
   --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-cursor-trail: cursor-trail 0.6s ease-out forwards;
+  --animate-fade-in-up: fade-in-up 0.4s ease-out forwards;
+}
+
+@keyframes cursor-trail {
+  0% { opacity: 0.8; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.2); }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes grid-pan {
+  0% { background-position: 0 0; }
+  100% { background-position: -20px -20px; }
 }
 
 :root {
@@ -64,6 +81,14 @@
   }
   body {
     @apply bg-background text-foreground font-sans antialiased overflow-x-hidden;
+  }
+  /* Animated dot grid background */
+  body::before {
+    content: "";
+    @apply pointer-events-none fixed inset-0 z-[-1] opacity-[0.15];
+    background-image: radial-gradient(hsl(var(--primary)) 1px, transparent 1px);
+    background-size: 20px 20px;
+    animation: grid-pan 8s linear infinite;
   }
   h1, h2, h3, h4, h5, h6 {
     @apply font-display tracking-tight text-foreground;

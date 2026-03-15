@@ -1,3 +1,4 @@
+import React, { useRef, useState } from "react";
 import { Link } from "wouter";
 import { type Video } from "@workspace/api-client-react";
 import { formatDuration } from "@/lib/utils";
@@ -12,8 +13,61 @@ export function VideoCard({ video }: VideoCardProps) {
   const isProcessing = video.status === "processing";
   const isFailed = video.status === "failed";
 
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [style, setStyle] = useState({});
+  const [glareStyle, setGlareStyle] = useState({ opacity: 0, transform: "translate(-50%, -50%)" });
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!cardRef.current) return;
+    const rect = cardRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // Calculate tilt
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    
+    const maxTilt = 12;
+    const rotateX = ((y - centerY) / centerY) * -maxTilt;
+    const rotateY = ((x - centerX) / centerX) * maxTilt;
+    
+    setStyle({
+      transform: `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`,
+      transition: "transform 0.1s ease",
+    });
+
+    // Calculate glare
+    setGlareStyle({
+      opacity: 0.15,
+      transform: `translate(${x}px, ${y}px) translate(-50%, -50%)`,
+    });
+  };
+
+  const handleMouseLeave = () => {
+    setStyle({
+      transform: "perspective(1000px) rotateX(0deg) rotateY(0deg)",
+      transition: "transform 0.5s ease",
+    });
+    setGlareStyle({
+      opacity: 0,
+      transform: "translate(-50%, -50%)",
+    });
+  };
+
   const content = (
-    <div className="group relative flex flex-col rounded-2xl bg-card border border-white/5 overflow-hidden hover:border-white/10 transition-all duration-300 hover:shadow-2xl hover:shadow-black/50 hover:-translate-y-1">
+    <div 
+      ref={cardRef}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      className="group relative flex flex-col rounded-2xl bg-card border border-white/5 overflow-hidden hover:border-white/10 transition-colors duration-300 hover:shadow-2xl hover:shadow-primary/20 hover:-translate-y-1"
+      style={style}
+    >
+      {/* Glare effect */}
+      <div 
+        className="pointer-events-none absolute left-0 top-0 z-10 h-64 w-64 rounded-full bg-white blur-3xl transition-opacity duration-300 mix-blend-overlay"
+        style={glareStyle}
+      />
+      
       {/* Thumbnail Area */}
       <div className="aspect-video w-full bg-secondary/50 relative overflow-hidden">
         {video.thumbnailUrl ? (

@@ -85,7 +85,7 @@ export default function Watch() {
                <h3 className="text-lg font-semibold text-white mb-4">Description</h3>
                <p className="text-muted-foreground leading-relaxed">
                  {/* Schema doesn't have a description field, using a placeholder text to look complete */}
-                 This video was uploaded to StreamVault. The platform automatically processes media to HLS format for adaptive bitrate streaming, ensuring the best possible playback quality based on your network conditions.
+                 This video was uploaded to ByteStream. The platform automatically processes media to HLS format for adaptive bitrate streaming, ensuring the best possible playback quality based on your network conditions.
                </p>
             </div>
           </div>
