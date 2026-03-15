@@ -1,37 +1,35 @@
 import { useState, useRef } from "react";
 import { useLocation } from "wouter";
 import axios from "axios";
-import { useAuthStore } from "@/store/use-auth";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Upload as UploadIcon, X, FileVideo, CheckCircle2, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
+
 export default function Upload() {
   const [_, setLocation] = useLocation();
-  const token = useAuthStore(s => s.token);
   const { toast } = useToast();
-  
+
   const [title, setTitle] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      const selectedFile = e.target.files[0];
-      if (!selectedFile.type.startsWith('video/')) {
+      const selected = e.target.files[0];
+      if (!selected.type.startsWith("video/")) {
         toast({ variant: "destructive", title: "Invalid file", description: "Please select a video file." });
         return;
       }
-      setFile(selectedFile);
-      if (!title) {
-        setTitle(selectedFile.name.replace(/\.[^/.]+$/, ""));
-      }
+      setFile(selected);
+      if (!title) setTitle(selected.name.replace(/\.[^/.]+$/, ""));
       setError(null);
     }
   };
@@ -51,30 +49,16 @@ export default function Upload() {
     formData.append("file", file);
 
     try {
-      await axios.post("/api/videos/upload", formData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "multipart/form-data",
-        },
-        onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
-          setProgress(percentCompleted);
+      await axios.post(`${API_BASE}/api/videos/upload`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+        onUploadProgress: (e) => {
+          setProgress(Math.round((e.loaded * 100) / (e.total ?? 1)));
         },
       });
 
-      toast({ 
-        variant: "success",
-        title: "Upload successful", 
-        description: "Your video is now processing." 
-      });
-      
-      // Delay redirect slightly to show 100% completion
-      setTimeout(() => {
-        setLocation("/dashboard");
-      }, 1500);
-
+      toast({ variant: "success", title: "Upload successful", description: "Your video is now processing." });
+      setTimeout(() => setLocation("/dashboard"), 1500);
     } catch (err: any) {
-      console.error(err);
       setError(err.response?.data?.message || "Failed to upload video.");
       setIsUploading(false);
     }
@@ -99,19 +83,19 @@ export default function Upload() {
           <div className="space-y-8">
             <div className="space-y-2">
               <label className="text-sm font-medium text-white/80 ml-1">Video Title</label>
-              <Input 
+              <Input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Enter an engaging title" 
+                placeholder="Enter an engaging title"
                 disabled={isUploading}
               />
             </div>
 
             <div className="space-y-2">
               <label className="text-sm font-medium text-white/80 ml-1">Video File</label>
-              
+
               {!file ? (
-                <div 
+                <div
                   onClick={() => fileInputRef.current?.click()}
                   className="w-full aspect-[21/9] border-2 border-dashed border-white/10 rounded-2xl bg-black/20 hover:bg-white/5 transition-colors flex flex-col items-center justify-center cursor-pointer group"
                 >
@@ -120,10 +104,10 @@ export default function Upload() {
                   </div>
                   <h3 className="text-lg font-medium text-white mb-1">Select a video file</h3>
                   <p className="text-sm text-muted-foreground">MP4, WebM, or MOV up to 2GB</p>
-                  <input 
-                    type="file" 
-                    accept="video/*" 
-                    className="hidden" 
+                  <input
+                    type="file"
+                    accept="video/*"
+                    className="hidden"
                     ref={fileInputRef}
                     onChange={handleFileChange}
                   />
@@ -153,11 +137,11 @@ export default function Upload() {
                   <span className="text-primary font-medium">{progress}%</span>
                 </div>
                 <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden border border-white/10">
-                  <div 
+                  <div
                     className="h-full bg-gradient-to-r from-primary to-blue-400 transition-all duration-300 relative"
                     style={{ width: `${progress}%` }}
                   >
-                     <div className="absolute inset-0 bg-white/20 animate-[pulse_1s_ease-in-out_infinite]" />
+                    <div className="absolute inset-0 bg-white/20 animate-pulse" />
                   </div>
                 </div>
                 {progress === 100 && (
@@ -169,18 +153,10 @@ export default function Upload() {
             )}
 
             <div className="pt-4 border-t border-white/5 flex justify-end gap-3">
-              <Button 
-                variant="ghost" 
-                onClick={() => setLocation("/dashboard")}
-                disabled={isUploading}
-              >
+              <Button variant="ghost" onClick={() => setLocation("/dashboard")} disabled={isUploading}>
                 Cancel
               </Button>
-              <Button 
-                onClick={handleUpload} 
-                disabled={!file || !title || isUploading}
-                isLoading={isUploading}
-              >
+              <Button onClick={handleUpload} disabled={!file || !title || isUploading} isLoading={isUploading}>
                 {isUploading ? "Uploading..." : "Upload Video"}
               </Button>
             </div>
