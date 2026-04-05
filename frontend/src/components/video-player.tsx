@@ -6,10 +6,13 @@ import { formatDuration } from '@/lib/utils';
 interface VideoPlayerProps {
   manifestUrl: string;
   poster?: string;
+  onHlsReady?: (hls: Hls) => void;
+  videoRef?: React.RefObject<HTMLVideoElement | null>;
 }
 
-export function VideoPlayer({ manifestUrl, poster }: VideoPlayerProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+export function VideoPlayer({ manifestUrl, poster, onHlsReady, videoRef: externalVideoRef }: VideoPlayerProps) {
+  const internalVideoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = externalVideoRef ?? internalVideoRef;
   const containerRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -37,6 +40,7 @@ export function VideoPlayer({ manifestUrl, poster }: VideoPlayerProps) {
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         setIsBuffering(false);
+        onHlsReady?.(hls);
       });
       hls.on(Hls.Events.ERROR, (event, data) => {
         if (data.fatal) {
