@@ -54,7 +54,7 @@ public class Video {
 
     // Processing event trail — stored as a JSON array in a TEXT column.
     // Simple but effective for debugging pipeline stages.
-    @ElementCollection
+    @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "video_processing_logs", joinColumns = @JoinColumn(name = "video_id"))
     @Column(name = "log_entry", columnDefinition = "TEXT")
     @OrderColumn(name = "log_order")

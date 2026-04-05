@@ -19,10 +19,10 @@ import java.util.List;
 @Component
 public class FileValidator {
 
-    @Value("${app.upload.max-size-bytes}")
+    @Value("${app.upload.max-size-bytes:524288000}")
     private long maxSizeBytes;
 
-    @Value("${app.upload.allowed-extensions}")
+    @Value("${app.upload.allowed-extensions:mp4,mkv,mov}")
     private List<String> allowedExtensions;
 
     public void validate(MultipartFile file) {

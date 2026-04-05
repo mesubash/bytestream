@@ -32,7 +32,7 @@ import java.util.concurrent.CompletableFuture;
 @Slf4j
 public class VideoProcessingService {
 
-    @Value("${ffmpeg.path}")
+    @Value("${ffmpeg.path:ffmpeg}")
     private String ffmpegPath;
 
     /**

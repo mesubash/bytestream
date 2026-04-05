@@ -28,16 +28,16 @@ import java.util.concurrent.ConcurrentHashMap;
 @Configuration
 public class RateLimitConfig {
 
-    @Value("${app.rate-limit.upload.capacity}")
+    @Value("${app.rate-limit.upload.capacity:5}")
     private int uploadCapacity;
 
-    @Value("${app.rate-limit.upload.refill-minutes}")
+    @Value("${app.rate-limit.upload.refill-minutes:1}")
     private int uploadRefillMinutes;
 
-    @Value("${app.rate-limit.stream.capacity}")
+    @Value("${app.rate-limit.stream.capacity:100}")
     private int streamCapacity;
 
-    @Value("${app.rate-limit.stream.refill-minutes}")
+    @Value("${app.rate-limit.stream.refill-minutes:1}")
     private int streamRefillMinutes;
 
     // One bucket per IP per endpoint type

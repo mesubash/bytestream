@@ -40,7 +40,7 @@ public class VideoService {
     private final StorageService        storageService;
     private final FileValidator         fileValidator;
 
-    @Value("${ffmpeg.tmp-dir}")
+    @Value("${ffmpeg.tmp-dir:/tmp/bytestream/uploads}")
     private String tmpDir;
 
     // ── Upload ───────────────────────────────────────────────────────────────
@@ -147,11 +147,21 @@ public class VideoService {
 
         processingService.processVideo(uploadedFilePath, hlsOutputDir, videoId)
                 .thenAccept(result -> {
-                    if (result.success()) {
-                        handleProcessingSuccess(videoId, result, uploadedFilePath);
-                    } else {
-                        handleProcessingFailure(videoId, result.errorMessage(), uploadedFilePath);
+                    try {
+                        if (result.success()) {
+                            handleProcessingSuccess(videoId, result, uploadedFilePath);
+                        } else {
+                            handleProcessingFailure(videoId, result.errorMessage(), uploadedFilePath);
+                        }
+                    } catch (Exception e) {
+                        log.error("[{}] Unexpected error in processing callback: {}", videoId, e.getMessage(), e);
+                        handleProcessingFailure(videoId, "Unexpected error: " + e.getMessage(), uploadedFilePath);
                     }
+                })
+                .exceptionally(ex -> {
+                    log.error("[{}] Async processing threw exception: {}", videoId, ex.getMessage(), ex);
+                    handleProcessingFailure(videoId, "Async error: " + ex.getMessage(), uploadedFilePath);
+                    return null;
                 });
 
         // Update status to PROCESSING right away so the client sees progress
