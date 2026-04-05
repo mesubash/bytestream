@@ -1,14 +1,32 @@
 import React, { useRef, useState } from "react";
 import { Link } from "wouter";
-import { type VideoSummary } from "@/lib/api";
+import { useQueryClient } from "@tanstack/react-query";
+import { type VideoSummary, api } from "@/lib/api";
 import { formatDuration } from "@/lib/utils";
-import { PlayCircle, Clock, AlertCircle, Loader2 } from "lucide-react";
+import { PlayCircle, Clock, AlertCircle, Loader2, Trash2 } from "lucide-react";
 
 interface VideoCardProps {
   video: VideoSummary;
 }
 
 export function VideoCard({ video }: VideoCardProps) {
+  const queryClient = useQueryClient();
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm(`Delete "${video.title}"? This cannot be undone.`)) return;
+
+    setIsDeleting(true);
+    try {
+      await api.deleteVideo(video.id);
+      queryClient.invalidateQueries({ queryKey: ["videos"] });
+    } catch {
+      alert("Failed to delete video.");
+      setIsDeleting(false);
+    }
+  };
   const isReady = video.status === "READY";
   const isProcessing = video.status === "PROCESSING" || video.status === "UPLOADING";
   const isFailed = video.status === "FAILED";
@@ -49,6 +67,15 @@ export function VideoCard({ video }: VideoCardProps) {
         className="pointer-events-none absolute left-0 top-0 z-10 h-64 w-64 rounded-full bg-white blur-3xl transition-opacity duration-300 mix-blend-overlay"
         style={glareStyle}
       />
+
+      {/* Delete button */}
+      <button
+        onClick={handleDelete}
+        disabled={isDeleting}
+        className="absolute top-2 right-2 z-20 p-1.5 rounded-lg bg-black/60 backdrop-blur-sm border border-white/10 text-muted-foreground hover:text-destructive hover:border-destructive/30 hover:bg-destructive/10 transition-all opacity-0 group-hover:opacity-100"
+      >
+        {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+      </button>
 
       <div className="aspect-video w-full bg-secondary/50 relative overflow-hidden">
         {video.thumbnailUrl ? (

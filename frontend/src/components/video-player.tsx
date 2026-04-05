@@ -156,18 +156,21 @@ export function VideoPlayer({ manifestUrl, poster, onHlsReady, videoRef: externa
   };
 
   return (
-    <div 
-      ref={containerRef} 
+    <div
+      ref={containerRef}
       className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden group shadow-2xl shadow-black border border-white/10"
       onMouseMove={handleMouseMove}
       onMouseLeave={() => isPlaying && setShowControls(false)}
-      onClick={togglePlay}
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.code === "Space") { e.preventDefault(); togglePlay(); }
+      }}
     >
       <video
         ref={videoRef}
         poster={poster}
-        className="w-full h-full object-contain"
-        onClick={(e) => e.stopPropagation()} // Let the container handle click to play/pause so clicking controls doesn't trigger it
+        className="w-full h-full object-contain cursor-pointer"
+        onClick={togglePlay}
       />
 
       {isBuffering && (

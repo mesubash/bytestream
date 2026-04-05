@@ -10,6 +10,11 @@ export default function Dashboard() {
   const { data: videos, isLoading, isError, error } = useQuery({
     queryKey: ["videos"],
     queryFn: api.listVideos,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      const hasProcessing = data?.some(v => v.status === "PROCESSING" || v.status === "UPLOADING");
+      return hasProcessing ? 3000 : false;
+    },
   });
 
   return (

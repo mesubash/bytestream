@@ -38,12 +38,12 @@ interface StreamStats {
 
 interface Props {
   hls: Hls | null;
-  videoElement: HTMLVideoElement | null;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
 }
 
 // ─── Component ───────────────────────────────────────────────
 
-export function StreamingDebugPanel({ hls, videoElement }: Props) {
+export function StreamingDebugPanel({ hls, videoRef }: Props) {
   const [segments, setSegments] = useState<SegmentInfo[]>([]);
   const [stats, setStats] = useState<StreamStats>({
     bandwidth: 0,
@@ -74,8 +74,8 @@ export function StreamingDebugPanel({ hls, videoElement }: Props) {
   useEffect(() => {
     if (!hls) return;
 
-    const onLevelLoaded = (_: any, data: { details: { fragments: any[] } }) => {
-      const frags = data.details.fragments;
+    const initFromFragments = (frags: any[]) => {
+      if (!frags.length || segmentsRef.current.length > 0) return;
       const mapped: SegmentInfo[] = frags.map((f, i) => ({
         index: i,
         state: "not_loaded" as SegmentState,
@@ -89,11 +89,45 @@ export function StreamingDebugPanel({ hls, videoElement }: Props) {
       addLog(`Manifest loaded: ${frags.length} segments, ~${frags[0]?.duration.toFixed(1)}s each`);
     };
 
+    // Check if level details are already available (race condition fix)
+    const currentLevel = hls.levels?.[hls.currentLevel];
+    if (currentLevel?.details?.fragments) {
+      initFromFragments(currentLevel.details.fragments);
+
+      // Mark already-buffered fragments by checking the video element's buffered ranges
+      const video = videoRef.current;
+      if (video && segmentsRef.current.length > 0) {
+        const currentTime = video.currentTime;
+        segmentsRef.current.forEach((seg) => {
+          const segMid = seg.startTime + seg.duration / 2;
+          for (let i = 0; i < video.buffered.length; i++) {
+            if (segMid >= video.buffered.start(i) && segMid <= video.buffered.end(i)) {
+              if (currentTime >= seg.startTime + seg.duration) {
+                seg.state = "played";
+              } else {
+                seg.state = "buffered";
+              }
+              break;
+            }
+          }
+        });
+        setSegments([...segmentsRef.current]);
+        const bufferedCount = segmentsRef.current.filter(s => s.state === "buffered" || s.state === "played").length;
+        if (bufferedCount > 0) {
+          addLog(`Recovered state: ${bufferedCount} segments already buffered`);
+        }
+      }
+    }
+
+    const onLevelLoaded = (_: any, data: { details: { fragments: any[] } }) => {
+      initFromFragments(data.details.fragments);
+    };
+
     hls.on(Hls.Events.LEVEL_LOADED, onLevelLoaded);
     return () => {
       hls.off(Hls.Events.LEVEL_LOADED, onLevelLoaded);
     };
-  }, [hls, addLog]);
+  }, [hls, addLog, videoRef]);
 
   // ─── Track fragment loading / loaded ───────────────────────
 
@@ -173,15 +207,50 @@ export function StreamingDebugPanel({ hls, videoElement }: Props) {
   // ─── Periodic stats update ─────────────────────────────────
 
   useEffect(() => {
-    if (!hls || !videoElement) return;
+    if (!hls) return;
 
     const interval = setInterval(() => {
+      const videoElement = videoRef.current;
+      if (!videoElement) return;
+
+      // Safety net: if segments never initialized, try again
+      if (segmentsRef.current.length === 0) {
+        const level = hls.levels?.[hls.currentLevel];
+        if (level?.details?.fragments) {
+          const frags = level.details.fragments;
+          const mapped: SegmentInfo[] = frags.map((f: any, i: number) => ({
+            index: i,
+            state: "not_loaded" as SegmentState,
+            startTime: f.start,
+            duration: f.duration,
+            size: null,
+            loadTimeMs: null,
+          }));
+          segmentsRef.current = mapped;
+        }
+        if (segmentsRef.current.length === 0) return;
+      }
+
       const currentTime = videoElement.currentTime;
 
-      // Mark played segments
+      // Sync segment states from actual video buffer ranges
       let currentSeg = -1;
       segmentsRef.current.forEach((seg, i) => {
-        if (currentTime >= seg.startTime + seg.duration && seg.state === "buffered") {
+        const segMid = seg.startTime + seg.duration / 2;
+
+        // Check if this segment is in any buffered range
+        let isInBuffer = false;
+        for (let b = 0; b < videoElement.buffered.length; b++) {
+          if (segMid >= videoElement.buffered.start(b) && segMid <= videoElement.buffered.end(b)) {
+            isInBuffer = true;
+            break;
+          }
+        }
+
+        if (isInBuffer && seg.state === "not_loaded") {
+          seg.state = "buffered";
+        }
+        if (currentTime >= seg.startTime + seg.duration && (seg.state === "buffered" || seg.state === "not_loaded")) {
           seg.state = "played";
         }
         if (currentTime >= seg.startTime && currentTime < seg.startTime + seg.duration) {
@@ -215,7 +284,7 @@ export function StreamingDebugPanel({ hls, videoElement }: Props) {
     }, 250);
 
     return () => clearInterval(interval);
-  }, [hls, videoElement]);
+  }, [hls, videoRef]);
 
   // Auto-scroll event log
   useEffect(() => {
@@ -224,7 +293,18 @@ export function StreamingDebugPanel({ hls, videoElement }: Props) {
     }
   }, [eventLog]);
 
-  if (!hls || segments.length === 0) return null;
+  if (!hls) return null;
+
+  if (segments.length === 0) {
+    return (
+      <div className="mt-6 rounded-2xl border border-white/10 bg-black/60 backdrop-blur-md p-5">
+        <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
+          <Activity className="w-4 h-4 text-primary animate-pulse" />
+          <span>Initializing streaming debug panel...</span>
+        </div>
+      </div>
+    );
+  }
 
   const bufferedCount = segments.filter((s) => s.state === "buffered").length;
   const playedCount = segments.filter((s) => s.state === "played").length;
@@ -397,19 +477,20 @@ export function StreamingDebugPanel({ hls, videoElement }: Props) {
             </span>
             <div className="mt-2 relative h-6 bg-white/5 rounded-full overflow-hidden border border-white/5">
               {/* Buffered range */}
-              {videoElement && stats.totalSegments > 0 && (
+              {videoRef.current && stats.totalSegments > 0 && (
                 <>
-                  {Array.from({ length: videoElement.buffered.length }).map((_, i) => {
-                    const start = videoElement.buffered.start(i);
-                    const end = videoElement.buffered.end(i);
-                    const duration = videoElement.duration || 1;
+                  {Array.from({ length: videoRef.current.buffered.length }).map((_, i) => {
+                    const el = videoRef.current!;
+                    const start = el.buffered.start(i);
+                    const end = el.buffered.end(i);
+                    const dur = el.duration || 1;
                     return (
                       <div
                         key={i}
                         className="absolute inset-y-0 bg-emerald-500/30 border-x border-emerald-500/50"
                         style={{
-                          left: `${(start / duration) * 100}%`,
-                          width: `${((end - start) / duration) * 100}%`,
+                          left: `${(start / dur) * 100}%`,
+                          width: `${((end - start) / dur) * 100}%`,
                         }}
                       />
                     );
@@ -419,7 +500,7 @@ export function StreamingDebugPanel({ hls, videoElement }: Props) {
                     className="absolute inset-y-0 w-0.5 bg-primary shadow-[0_0_6px_rgba(6,182,212,0.8)] z-10"
                     style={{
                       left: `${
-                        ((videoElement.currentTime || 0) / (videoElement.duration || 1)) * 100
+                        ((videoRef.current.currentTime || 0) / (videoRef.current.duration || 1)) * 100
                       }%`,
                     }}
                   />
@@ -428,7 +509,7 @@ export function StreamingDebugPanel({ hls, videoElement }: Props) {
             </div>
             <div className="flex justify-between mt-1 text-[10px] text-muted-foreground">
               <span>0:00</span>
-              <span>{formatDuration(videoElement?.duration)}</span>
+              <span>{formatDuration(videoRef.current?.duration)}</span>
             </div>
           </div>
 

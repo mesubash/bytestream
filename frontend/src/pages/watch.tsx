@@ -1,19 +1,35 @@
-import { useParams } from "wouter";
+import { useParams, useLocation } from "wouter";
 import { useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Hls from "hls.js";
 import { api } from "@/lib/api";
 import { Layout } from "@/components/layout";
 import { VideoPlayer } from "@/components/video-player";
 import { StreamingDebugPanel } from "@/components/streaming-debug-panel";
-import { Loader2, ArrowLeft, Calendar } from "lucide-react";
+import { Loader2, ArrowLeft, Calendar, Trash2 } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 
 export default function Watch() {
   const { id } = useParams<{ id: string }>();
+  const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [hlsInstance, setHlsInstance] = useState<Hls | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    if (!id || !confirm("Delete this video? This cannot be undone.")) return;
+    setIsDeleting(true);
+    try {
+      await api.deleteVideo(id);
+      queryClient.invalidateQueries({ queryKey: ["videos"] });
+      setLocation("/dashboard");
+    } catch {
+      alert("Failed to delete video.");
+      setIsDeleting(false);
+    }
+  };
 
   const { data: video, isLoading: videoLoading, isError: videoError } = useQuery({
     queryKey: ["video", id],
@@ -87,10 +103,21 @@ export default function Watch() {
                   </span>
                   Ready to Stream
                 </div>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleDelete}
+                  disabled={isDeleting}
+                  className="ml-auto text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                >
+                  {isDeleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                  Delete
+                </Button>
               </div>
             </div>
 
-            <StreamingDebugPanel hls={hlsInstance} videoElement={videoRef.current} />
+            <StreamingDebugPanel hls={hlsInstance} videoRef={videoRef} />
           </div>
         )}
       </div>

@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "wouter";
-import { Play, Upload, Video } from "lucide-react";
+import { Play, Upload, Video, Info } from "lucide-react";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -43,6 +43,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
             >
               <Upload className="w-4 h-4" />
               <span className="hidden sm:inline">Upload</span>
+            </Link>
+            <Link
+              href="/about"
+              className={`text-sm font-medium transition-colors px-3 py-2 rounded-md flex items-center gap-2 ${
+                location === "/about"
+                  ? "text-white bg-white/5"
+                  : "text-muted-foreground hover:text-white hover:bg-white/5"
+              }`}
+            >
+              <Info className="w-4 h-4" />
+              <span className="hidden sm:inline">About</span>
             </Link>
           </nav>
         </div>

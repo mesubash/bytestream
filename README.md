@@ -1,34 +1,28 @@
 # ByteStream
 
-A modern video streaming platform with HLS adaptive bitrate streaming and async video processing.
+A modern video streaming platform with HLS adaptive bitrate streaming, Cloudflare R2 storage, and async video processing.
 
 ---
 
 ## What is ByteStream?
 
-ByteStream is a full-stack video streaming platform that handles the complete video lifecycle — upload, processing, storage, and playback. Videos are uploaded through a React frontend, processed into HLS segments using FFmpeg on a Spring Boot backend, stored on local disk (swappable to S3), and streamed to the browser using adaptive bitrate playback.
+ByteStream is a full-stack video streaming platform that handles the complete video lifecycle — upload, processing, storage, and playback. Videos are uploaded through a React frontend, processed into HLS segments using FFmpeg on a Spring Boot backend, stored on Cloudflare R2, and streamed directly to the browser using adaptive bitrate playback.
+
+The server never streams video segments directly. R2 handles segment delivery, keeping the backend lightweight and scalable.
 
 ---
 
 ## Architecture
 
 ```
-Client (React Frontend)
+Client (React + HLS.js)
         │
         ▼
-  Spring Boot API
-        │
-        ├── Video Upload Service
-        │
-        ├── FFmpeg Processing Service
-        │
-        ├── Storage Service (local filesystem)
-        │
-        └── Video Controller
-                │
-                ▼
-        Local Storage (./bytestream-storage/)
-          (.m3u8 + .ts segments)
+  Spring Boot API ──→ FFmpeg
+        │                 │
+        ▼                 ▼
+  PostgreSQL        Cloudflare R2
+  (Neon DB)         (.m3u8 + .ts segments)
 ```
 
 The API coordinates **upload → processing → storage → streaming**.
@@ -53,13 +47,15 @@ The API coordinates **upload → processing → storage → streaming**.
 
 ### Backend
 
-| Technology    | Purpose                               |
-| ------------- | ------------------------------------- |
-| Spring Boot 4 | REST API framework                    |
-| FFmpeg        | Video processing and HLS segmentation |
-| PostgreSQL    | Video metadata storage                |
-| Bucket4j      | Rate limiting                         |
-| Lombok        | Boilerplate reduction                 |
+| Technology      | Purpose                               |
+| --------------- | ------------------------------------- |
+| Spring Boot 4   | REST API framework                    |
+| FFmpeg          | Video processing and HLS segmentation |
+| Cloudflare R2   | Segment and manifest storage          |
+| PostgreSQL      | Video metadata storage (Neon)         |
+| AWS S3 SDK v2   | R2 client (S3-compatible)             |
+| Bucket4j        | Rate limiting                         |
+| Lombok          | Boilerplate reduction                 |
 
 ---
 
@@ -74,12 +70,14 @@ bytestream/
 │   │   │   ├── layout.tsx    # App shell with navigation
 │   │   │   ├── video-card.tsx
 │   │   │   ├── video-player.tsx
+│   │   │   ├── streaming-debug-panel.tsx
 │   │   │   ├── cursor-trail.tsx
 │   │   │   └── mouse-spotlight.tsx
 │   │   ├── pages/            # Route pages
 │   │   │   ├── dashboard.tsx # Video library grid
 │   │   │   ├── upload.tsx    # Drag-and-drop upload
-│   │   │   ├── watch.tsx     # Video player page
+│   │   │   ├── watch.tsx     # Video player + debug panel
+│   │   │   ├── about.tsx     # Project info
 │   │   │   └── not-found.tsx
 │   │   ├── hooks/            # Custom React hooks
 │   │   ├── lib/              # API client and utilities
@@ -95,6 +93,7 @@ bytestream/
     └── src/main/java/com/bytestream/
         ├── config/
         │   ├── AsyncConfig
+        │   ├── R2Config
         │   ├── RateLimitConfig
         │   └── WebConfig
         ├── controller/
@@ -135,8 +134,8 @@ Single table — `videos`:
 | original_filename | VARCHAR   | Original uploaded filename           |
 | duration_seconds  | BIGINT    | Duration in seconds                  |
 | status            | VARCHAR   | UPLOADING, PROCESSING, READY, FAILED |
-| s3_manifest_url   | VARCHAR   | URL to .m3u8 manifest                |
-| thumbnail_url     | VARCHAR   | URL to thumbnail                     |
+| s3_manifest_url   | VARCHAR   | R2 URL to .m3u8 manifest             |
+| thumbnail_url     | VARCHAR   | R2 URL to thumbnail                  |
 | created_at        | TIMESTAMP | Upload timestamp                     |
 | updated_at        | TIMESTAMP | Last modified timestamp              |
 
@@ -187,7 +186,7 @@ Returns full video metadata including processing logs.
 GET /api/v1/videos/{id}/manifest
 ```
 
-Returns the manifest URL for HLS playback. Only works when status is `READY`.
+Returns the R2 manifest URL for HLS playback. Only works when status is `READY`.
 Returns `409 Conflict` if video is still processing or failed.
 Rate limited: 100 requests/minute per IP.
 
@@ -197,7 +196,7 @@ Rate limited: 100 requests/minute per IP.
 DELETE /api/v1/videos/{id}
 ```
 
-Removes the database entry and all stored files. Returns `204 No Content`.
+Removes the database entry and all R2 files. Returns `204 No Content`.
 
 ---
 
@@ -218,10 +217,10 @@ Removes the database entry and all stored files. Returns `204 No Content`.
        playlist.m3u8
 7. Thumbnail extracted at 5-second mark
 8. Duration probed via ffprobe
-9. Segments, manifest, and thumbnail copied to local storage:
-     ./bytestream-storage/videos/{videoId}/playlist.m3u8
-     ./bytestream-storage/videos/{videoId}/segment_000.ts
-     ./bytestream-storage/videos/{videoId}/thumbnail.jpg
+9. Segments, manifest, and thumbnail uploaded to Cloudflare R2:
+     r2://streambyte/videos/{videoId}/playlist.m3u8
+     r2://streambyte/videos/{videoId}/segment_000.ts
+     r2://streambyte/videos/{videoId}/thumbnail.jpg
 10. Database updated: status = READY, manifest URL + thumbnail URL stored
 11. Temp files cleaned up
 ```
@@ -232,19 +231,20 @@ Removes the database entry and all stored files. Returns `204 No Content`.
 
 ```
 1. Frontend requests GET /api/v1/videos/{id}/manifest
-2. Backend returns manifest URL
-3. HLS.js fetches .m3u8 from the storage URL
-4. Player downloads .ts segments via Spring static resource handler
+2. Backend returns R2 public URL to the .m3u8 manifest
+3. HLS.js fetches .m3u8 directly from R2
+4. Player downloads .ts segments directly from R2
+5. Server is NOT involved in segment delivery
 ```
+
+This is how production streaming systems reduce server load.
 
 ---
 
-## Storage Layout
-
-Files are stored locally and served via Spring's static resource handler at `/videos/files/**`.
+## R2 Storage Layout
 
 ```
-./bytestream-storage/
+streambyte/                          (R2 bucket)
 └── videos/
     └── {videoId}/
         ├── playlist.m3u8
@@ -254,7 +254,16 @@ Files are stored locally and served via Spring's static resource handler at `/vi
         └── thumbnail.jpg
 ```
 
-The `StorageService` is designed as a single class to swap — replace it with an S3 implementation when ready for production.
+---
+
+## Streaming Debug Panel
+
+The watch page includes a real-time **Streaming Internals** panel that shows:
+
+- **Segment Map** — color-coded bar showing each segment's state (not loaded / downloading / buffered / played)
+- **Live Stats** — current segment, buffer health, bandwidth estimate, total downloaded
+- **Buffer Window** — visual bar showing actual buffered ranges vs playhead
+- **Event Log** — real-time log of every segment download with size, time, and speed
 
 ---
 
@@ -271,7 +280,7 @@ Using Bucket4j (in-memory, per-IP token buckets):
 
 ## File Upload Limits
 
-- Max file size: 500MB
+- Max file size: 50MB (frontend) / 500MB (backend)
 - Allowed formats: mp4, mkv, mov
 
 ---
@@ -283,25 +292,16 @@ Using Bucket4j (in-memory, per-IP token buckets):
 | `/`          | Redirects to dashboard |
 | `/dashboard` | Video library grid     |
 | `/upload`    | Upload new video       |
-| `/watch/:id` | Video player           |
-
----
-
-## Frontend Visual Effects
-
-- Canvas-based cursor particle trail with teal glow
-- Radial gradient mouse spotlight
-- 3D perspective card tilt on hover with glare
-- Animated dot grid background
-- Dark theme with glassmorphism panels
+| `/watch/:id` | Video player + debug   |
+| `/about`     | Project info           |
 
 ---
 
 ## Key Engineering Decisions
 
-**Processing is async.** The upload endpoint returns immediately with `202 Accepted`. FFmpeg processing runs on a dedicated thread pool (2 core, 4 max, queue of 20) so HTTP threads aren't blocked.
+**Server does not stream segments.** Segments are served directly from Cloudflare R2. The backend only handles upload, processing, and metadata.
 
-**Local storage, S3-ready.** Storage is on local disk behind a `StorageService` abstraction. Only that one class needs to change for S3 migration.
+**Processing is async.** The upload endpoint returns immediately with `202 Accepted`. FFmpeg processing runs on a dedicated thread pool (2 core, 4 max, queue of 20) so HTTP threads aren't blocked.
 
 **Single database table.** One `videos` table plus an element collection for processing logs. No premature complexity.
 
@@ -316,13 +316,9 @@ Using Bucket4j (in-memory, per-IP token buckets):
 - Java 21+
 - Node.js 18+
 - FFmpeg installed and on PATH
-- PostgreSQL running
-
-### Database Setup
-
-```sql
-CREATE DATABASE bytestream;
-```
+- Docker (for containerized backend)
+- Cloudflare R2 bucket with public access enabled
+- Neon PostgreSQL database (or any PostgreSQL)
 
 ### Frontend
 
@@ -335,14 +331,24 @@ npm run dev
 
 Runs on http://localhost:5173
 
-### Backend
+### Backend (Docker)
+
+```bash
+cd backend
+cp .env.example .env   # fill in your credentials
+docker compose up --build
+```
+
+Runs on http://localhost:8080
+
+### Backend (Local)
 
 ```bash
 cd backend
 ./mvnw spring-boot:run
 ```
 
-Runs on http://localhost:8080
+Requires `.env` or environment variables to be set.
 
 ---
 
@@ -354,21 +360,21 @@ Runs on http://localhost:8080
 VITE_API_BASE_URL=http://localhost:8080
 ```
 
-### Backend (`application.yml`)
+### Backend (`backend/.env`)
 
-```yaml
-spring:
-  datasource:
-    url: jdbc:postgresql://localhost:5432/bytestream
-    username: postgres
-    password: postgres
+```
+# Database (Neon Postgres)
+SPRING_DATASOURCE_URL=jdbc:postgresql://ep-xxxxx.aws.neon.tech/neondb?sslmode=require
+SPRING_DATASOURCE_USERNAME=neondb_owner
+SPRING_DATASOURCE_PASSWORD=your_password
 
-storage:
-  local:
-    base-dir: ./bytestream-storage
-    base-url: http://localhost:8080/videos/files
+# Cloudflare R2
+R2_ACCOUNT_ID=your_account_id
+R2_ACCESS_KEY=your_access_key
+R2_SECRET_KEY=your_secret_key
+R2_BUCKET=your_bucket_name
+R2_PUBLIC_URL=https://pub-xxxxx.r2.dev
 
-ffmpeg:
-  path: ffmpeg
-  tmp-dir: /tmp/bytestream/uploads
+# CORS
+APP_CORS_ALLOWED_ORIGINS=http://localhost:5173,https://your-frontend.vercel.app
 ```

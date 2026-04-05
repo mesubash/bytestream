@@ -9,6 +9,7 @@ import { CursorTrail } from "@/components/cursor-trail";
 import Dashboard from "@/pages/dashboard";
 import Watch from "@/pages/watch";
 import Upload from "@/pages/upload";
+import About from "@/pages/about";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -33,6 +34,7 @@ function Router() {
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/watch/:id" component={Watch} />
       <Route path="/upload" component={Upload} />
+      <Route path="/about" component={About} />
       <Route component={NotFound} />
     </Switch>
   );

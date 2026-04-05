@@ -17,19 +17,53 @@ export default function Upload() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const MAX_SIZE = 50 * 1024 * 1024; // 50MB
+  const ALLOWED_EXTENSIONS = ["mp4", "mkv", "mov"];
+
+  const validateAndSetFile = (selected: File) => {
+    if (!selected.type.startsWith("video/")) {
+      toast({ variant: "destructive", title: "Invalid file", description: "Please select a video file." });
+      return;
+    }
+    const ext = selected.name.split(".").pop()?.toLowerCase() ?? "";
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+      toast({ variant: "destructive", title: "Unsupported format", description: `Only ${ALLOWED_EXTENSIONS.join(", ")} files are allowed.` });
+      return;
+    }
+    if (selected.size > MAX_SIZE) {
+      toast({ variant: "destructive", title: "File too large", description: `Maximum file size is ${MAX_SIZE / (1024 * 1024)} MB.` });
+      return;
+    }
+    setFile(selected);
+    if (!title) setTitle(selected.name.replace(/\.[^/.]+$/, ""));
+    setError(null);
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      const selected = e.target.files[0];
-      if (!selected.type.startsWith("video/")) {
-        toast({ variant: "destructive", title: "Invalid file", description: "Please select a video file." });
-        return;
-      }
-      setFile(selected);
-      if (!title) setTitle(selected.name.replace(/\.[^/.]+$/, ""));
-      setError(null);
+      validateAndSetFile(e.target.files[0]);
     }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      validateAndSetFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
   };
 
   const handleUpload = async () => {
@@ -90,13 +124,26 @@ export default function Upload() {
               {!file ? (
                 <div
                   onClick={() => fileInputRef.current?.click()}
-                  className="w-full aspect-[21/9] border-2 border-dashed border-white/10 rounded-2xl bg-black/20 hover:bg-white/5 transition-colors flex flex-col items-center justify-center cursor-pointer group"
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  className={`w-full aspect-[21/9] border-2 border-dashed rounded-2xl transition-colors flex flex-col items-center justify-center cursor-pointer group ${
+                    isDragging
+                      ? "border-primary bg-primary/10"
+                      : "border-white/10 bg-black/20 hover:bg-white/5"
+                  }`}
                 >
-                  <div className="w-16 h-16 rounded-full bg-white/5 group-hover:bg-primary/20 flex items-center justify-center mb-4 transition-colors">
-                    <UploadIcon className="w-8 h-8 text-muted-foreground group-hover:text-primary transition-colors" />
+                  <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 transition-colors ${
+                    isDragging ? "bg-primary/30" : "bg-white/5 group-hover:bg-primary/20"
+                  }`}>
+                    <UploadIcon className={`w-8 h-8 transition-colors ${
+                      isDragging ? "text-primary" : "text-muted-foreground group-hover:text-primary"
+                    }`} />
                   </div>
-                  <h3 className="text-lg font-medium text-white mb-1">Select a video file</h3>
-                  <p className="text-sm text-muted-foreground">MP4, MKV, or MOV up to 500MB</p>
+                  <h3 className="text-lg font-medium text-white mb-1">
+                    {isDragging ? "Drop your video here" : "Drag & drop or click to select"}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">MP4, MKV, or MOV up to 50MB</p>
                   <input
                     type="file"
                     accept="video/*"
