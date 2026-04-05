@@ -22,6 +22,9 @@ Thumbs.db
 .env.local
 .env.*.local
 
+# claude
+.claude/
+
 # misc
 npm-debug.log
 yarn-error.log
