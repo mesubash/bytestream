@@ -1,14 +1,12 @@
 # ByteStream
 
-A modern video streaming platform with HLS adaptive bitrate streaming, cloud storage, and async video processing.
+A modern video streaming platform with HLS adaptive bitrate streaming and async video processing.
 
 ---
 
 ## What is ByteStream?
 
-ByteStream is a full-stack video streaming platform that handles the complete video lifecycle — upload, processing, storage, and playback. Videos are uploaded through a React frontend, processed into HLS segments using FFmpeg on a Spring Boot backend, stored in AWS S3, and streamed directly to the browser using adaptive bitrate playback.
-
-The server never streams video segments directly. S3 handles segment delivery, keeping the backend lightweight and scalable.
+ByteStream is a full-stack video streaming platform that handles the complete video lifecycle — upload, processing, storage, and playback. Videos are uploaded through a React frontend, processed into HLS segments using FFmpeg on a Spring Boot backend, stored on local disk (swappable to S3), and streamed to the browser using adaptive bitrate playback.
 
 ---
 
@@ -24,13 +22,13 @@ Client (React Frontend)
         │
         ├── FFmpeg Processing Service
         │
-        ├── S3 Storage Service
+        ├── Storage Service (local filesystem)
         │
-        └── Streaming Controller
+        └── Video Controller
                 │
                 ▼
-             AWS S3
-      (.m3u8 + .ts segments)
+        Local Storage (./bytestream-storage/)
+          (.m3u8 + .ts segments)
 ```
 
 The API coordinates **upload → processing → storage → streaming**.
@@ -41,27 +39,27 @@ The API coordinates **upload → processing → storage → streaming**.
 
 ### Frontend
 
-| Technology          | Purpose                          |
-| ------------------- | -------------------------------- |
-| React 19            | UI framework                     |
-| TypeScript          | Type safety                      |
-| Vite                | Build tool and dev server        |
-| Tailwind CSS 4      | Styling                          |
-| TanStack React Query| Server state management          |
-| HLS.js              | Adaptive bitrate video playback  |
-| Wouter              | Client-side routing              |
-| Radix UI            | Accessible UI primitives         |
-| Axios               | HTTP client with upload progress |
+| Technology           | Purpose                          |
+| -------------------- | -------------------------------- |
+| React 19             | UI framework                     |
+| TypeScript           | Type safety                      |
+| Vite                 | Build tool and dev server        |
+| Tailwind CSS 4       | Styling                          |
+| TanStack React Query | Server state management          |
+| HLS.js               | Adaptive bitrate video playback  |
+| Wouter               | Client-side routing              |
+| Radix UI             | Accessible UI primitives         |
+| Axios                | HTTP client with upload progress |
 
 ### Backend
 
-| Technology    | Purpose                        |
-| ------------- | ------------------------------ |
-| Spring Boot   | REST API framework             |
+| Technology    | Purpose                               |
+| ------------- | ------------------------------------- |
+| Spring Boot 4 | REST API framework                    |
 | FFmpeg        | Video processing and HLS segmentation |
-| AWS S3        | Segment and manifest storage   |
-| PostgreSQL    | Video metadata storage         |
-| Bucket4j      | Rate limiting                  |
+| PostgreSQL    | Video metadata storage                |
+| Bucket4j      | Rate limiting                         |
+| Lombok        | Boilerplate reduction                 |
 
 ---
 
@@ -94,25 +92,30 @@ bytestream/
 │   └── tsconfig.json
 │
 └── backend/
-    └── com.bytestream
+    └── src/main/java/com/bytestream/
         ├── config/
-        │   ├── S3Config
-        │   └── RateLimitConfig
+        │   ├── AsyncConfig
+        │   ├── RateLimitConfig
+        │   └── WebConfig
         ├── controller/
-        │   ├── VideoController
-        │   └── StreamingController
+        │   └── VideoController
         ├── service/
         │   ├── VideoService
         │   ├── VideoProcessingService
-        │   ├── StreamingService
         │   └── StorageService
         ├── repository/
         │   └── VideoRepository
         ├── model/
-        │   └── Video
+        │   ├── Video
+        │   └── VideoStatus
         ├── dto/
         │   ├── VideoResponse
-        │   └── UploadResponse
+        │   ├── VideoSummary
+        │   ├── UploadResponse
+        │   ├── ManifestResponse
+        │   └── ErrorResponse
+        ├── exception/
+        │   └── GlobalExceptionHandler
         ├── util/
         │   └── FileValidator
         └── ByteStreamApplication
@@ -124,84 +127,103 @@ bytestream/
 
 Single table — `videos`:
 
-| Column           | Type      | Description                    |
-| ---------------- | --------- | ------------------------------ |
-| id               | UUID      | Primary key                    |
-| title            | VARCHAR   | Video title                    |
-| description      | TEXT      | Video description              |
-| duration         | INTEGER   | Duration in seconds            |
-| status           | ENUM      | UPLOADING, PROCESSING, READY, FAILED |
-| s3_manifest_url  | VARCHAR   | S3 URL to .m3u8 manifest       |
-| thumbnail_url    | VARCHAR   | S3 URL to thumbnail            |
-| created_at       | TIMESTAMP | Upload timestamp               |
+| Column            | Type      | Description                          |
+| ----------------- | --------- | ------------------------------------ |
+| id                | UUID      | Primary key                          |
+| title             | VARCHAR   | Video title                          |
+| description       | TEXT      | Video description                    |
+| original_filename | VARCHAR   | Original uploaded filename           |
+| duration_seconds  | BIGINT    | Duration in seconds                  |
+| status            | VARCHAR   | UPLOADING, PROCESSING, READY, FAILED |
+| s3_manifest_url   | VARCHAR   | URL to .m3u8 manifest                |
+| thumbnail_url     | VARCHAR   | URL to thumbnail                     |
+| created_at        | TIMESTAMP | Upload timestamp                     |
+| updated_at        | TIMESTAMP | Last modified timestamp              |
+
+Element collection — `video_processing_logs`:
+
+| Column    | Type    | Description           |
+| --------- | ------- | --------------------- |
+| video_id  | UUID    | FK to videos.id       |
+| log_entry | TEXT    | Processing event log  |
+| log_order | INTEGER | Order in sequence     |
 
 ---
 
 ## API Endpoints
 
+All endpoints are prefixed with `/api/v1/videos`.
+
 ### Upload Video
 
 ```
-POST /videos/upload
+POST /api/v1/videos/upload
 Content-Type: multipart/form-data
 ```
 
-Accepts video file, validates format and size, triggers async processing.
+Form fields: `file` (required), `title` (required), `description` (optional).
+Returns `202 Accepted`. Processing runs async in background.
+Rate limited: 5 requests/minute per IP.
 
 ### List Videos
 
 ```
-GET /videos
+GET /api/v1/videos
 ```
 
-Returns all videos with id, title, thumbnail, duration, and status.
+Returns all videos (newest first) as `VideoSummary[]`.
 
 ### Get Video
 
 ```
-GET /videos/{id}
+GET /api/v1/videos/{id}
 ```
 
-Returns full video metadata.
+Returns full video metadata including processing logs.
 
 ### Get Streaming Manifest
 
 ```
-GET /videos/{id}/manifest
+GET /api/v1/videos/{id}/manifest
 ```
 
-Returns the S3 manifest URL. The player fetches segments directly from S3.
+Returns the manifest URL for HLS playback. Only works when status is `READY`.
+Returns `409 Conflict` if video is still processing or failed.
+Rate limited: 100 requests/minute per IP.
 
 ### Delete Video
 
 ```
-DELETE /videos/{id}
+DELETE /api/v1/videos/{id}
 ```
 
-Removes the database entry and all S3 files.
+Removes the database entry and all stored files. Returns `204 No Content`.
 
 ---
 
 ## Upload and Processing Flow
 
 ```
-1. Client uploads video file via POST /videos/upload
-2. Backend validates file (format, size, rate limit)
-3. File saved temporarily to /tmp/uploads/
+1. Client uploads video file via POST /api/v1/videos/upload
+2. Backend validates file (extension, size, rate limit)
+3. File saved temporarily to /tmp/bytestream/uploads/
 4. Database record created with status = UPLOADING
-5. Async processing triggered (@Async)
+5. Async processing triggered (@Async on dedicated thread pool)
 6. FFmpeg converts video to HLS segments:
      ffmpeg -i video.mp4 \
+       -c:v libx264 -c:a aac \
        -hls_time 4 \
        -hls_playlist_type vod \
        -hls_segment_filename segment_%03d.ts \
        playlist.m3u8
-7. Segments and manifest uploaded to S3:
-     s3://bytestream/videos/{videoId}/playlist.m3u8
-     s3://bytestream/videos/{videoId}/segment_001.ts
-     s3://bytestream/videos/{videoId}/segment_002.ts
-8. Database updated: status = READY, manifest URL stored
-9. Temp files cleaned up
+7. Thumbnail extracted at 5-second mark
+8. Duration probed via ffprobe
+9. Segments, manifest, and thumbnail copied to local storage:
+     ./bytestream-storage/videos/{videoId}/playlist.m3u8
+     ./bytestream-storage/videos/{videoId}/segment_000.ts
+     ./bytestream-storage/videos/{videoId}/thumbnail.jpg
+10. Database updated: status = READY, manifest URL + thumbnail URL stored
+11. Temp files cleaned up
 ```
 
 ---
@@ -209,39 +231,43 @@ Removes the database entry and all S3 files.
 ## Streaming Flow
 
 ```
-1. Frontend requests GET /videos/{id}/manifest
-2. Backend returns S3 manifest URL
-3. HLS.js fetches .m3u8 from S3
-4. Player downloads .ts segments directly from S3
-5. Server is NOT involved in segment delivery
+1. Frontend requests GET /api/v1/videos/{id}/manifest
+2. Backend returns manifest URL
+3. HLS.js fetches .m3u8 from the storage URL
+4. Player downloads .ts segments via Spring static resource handler
 ```
-
-This is how production streaming systems reduce server load.
 
 ---
 
-## S3 Storage Layout
+## Storage Layout
+
+Files are stored locally and served via Spring's static resource handler at `/videos/files/**`.
 
 ```
-bytestream-bucket/
+./bytestream-storage/
 └── videos/
     └── {videoId}/
         ├── playlist.m3u8
+        ├── segment_000.ts
         ├── segment_001.ts
         ├── segment_002.ts
-        └── segment_003.ts
+        └── thumbnail.jpg
 ```
+
+The `StorageService` is designed as a single class to swap — replace it with an S3 implementation when ready for production.
 
 ---
 
 ## Rate Limiting
 
-Using Bucket4j:
+Using Bucket4j (in-memory, per-IP token buckets):
 
-| Endpoint         | Limit              |
-| ---------------- | ------------------ |
-| Upload           | 5 requests/minute  |
-| Streaming        | 100 requests/minute|
+| Endpoint  | Limit               |
+| --------- | ------------------- |
+| Upload    | 5 requests/minute   |
+| Streaming | 100 requests/minute |
+
+---
 
 ## File Upload Limits
 
@@ -252,12 +278,12 @@ Using Bucket4j:
 
 ## Frontend Routes
 
-| Path          | Page            |
-| ------------- | --------------- |
-| `/`           | Redirects to dashboard |
-| `/dashboard`  | Video library grid     |
-| `/upload`     | Upload new video       |
-| `/watch/:id`  | Video player           |
+| Path         | Page                   |
+| ------------ | ---------------------- |
+| `/`          | Redirects to dashboard |
+| `/dashboard` | Video library grid     |
+| `/upload`    | Upload new video       |
+| `/watch/:id` | Video player           |
 
 ---
 
@@ -273,20 +299,36 @@ Using Bucket4j:
 
 ## Key Engineering Decisions
 
-**Server does not stream segments.** Segments are served directly from S3 for better scalability. The backend only handles upload, processing, and metadata management.
+**Processing is async.** The upload endpoint returns immediately with `202 Accepted`. FFmpeg processing runs on a dedicated thread pool (2 core, 4 max, queue of 20) so HTTP threads aren't blocked.
 
-**Processing is async.** The upload endpoint returns immediately. FFmpeg processing runs in the background so the client isn't blocked.
+**Local storage, S3-ready.** Storage is on local disk behind a `StorageService` abstraction. Only that one class needs to change for S3 migration.
 
-**Single database table.** One `videos` table is all that's needed. No premature complexity.
+**Single database table.** One `videos` table plus an element collection for processing logs. No premature complexity.
+
+**Separate manifest endpoint.** The manifest URL is fetched via a dedicated endpoint that enforces the video must be `READY`, keeping the concerns clean.
 
 ---
 
 ## Getting Started
 
+### Prerequisites
+
+- Java 21+
+- Node.js 18+
+- FFmpeg installed and on PATH
+- PostgreSQL running
+
+### Database Setup
+
+```sql
+CREATE DATABASE bytestream;
+```
+
 ### Frontend
 
 ```bash
 cd frontend
+cp .env.example .env
 npm install
 npm run dev
 ```
@@ -300,22 +342,33 @@ cd backend
 ./mvnw spring-boot:run
 ```
 
-Requires:
-- Java 21+
-- FFmpeg installed locally
-- PostgreSQL running
-- AWS S3 bucket configured
+Runs on http://localhost:8080
 
 ---
 
-## Environment Variables (Backend)
+## Environment Variables
+
+### Frontend (`frontend/.env`)
 
 ```
-SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/bytestream
-SPRING_DATASOURCE_USERNAME=postgres
-SPRING_DATASOURCE_PASSWORD=password
-AWS_ACCESS_KEY_ID=your-key
-AWS_SECRET_ACCESS_KEY=your-secret
-AWS_S3_BUCKET=bytestream-bucket
-AWS_REGION=us-east-1
+VITE_API_BASE_URL=http://localhost:8080
+```
+
+### Backend (`application.yml`)
+
+```yaml
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/bytestream
+    username: postgres
+    password: postgres
+
+storage:
+  local:
+    base-dir: ./bytestream-storage
+    base-url: http://localhost:8080/videos/files
+
+ffmpeg:
+  path: ffmpeg
+  tmp-dir: /tmp/bytestream/uploads
 ```
