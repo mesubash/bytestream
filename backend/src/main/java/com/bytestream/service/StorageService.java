@@ -1,139 +1,120 @@
 package com.bytestream.service;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import software.amazon.awssdk.core.sync.RequestBody;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.*;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.List;
+import java.nio.file.*;
+import java.util.Comparator;
 import java.util.UUID;
 
 /**
- * Handles all S3 operations.
+ * Local filesystem replacement for S3-based StorageService.
  *
- * Responsibilities:
- *   - Upload individual files (segments, manifests, thumbnails)
- *   - Upload an entire directory of HLS output
- *   - Build the public S3 URL for a given key
- *   - Delete all files for a video (cleanup)
+ * Instead of uploading to S3, HLS segments and thumbnails are copied
+ * into a local directory that Spring Boot serves as static files.
  *
- * S3 layout:
- *   videos/{videoId}/playlist.m3u8
- *   videos/{videoId}/segment_000.ts
- *   videos/{videoId}/segment_001.ts
- *   ...
- *   videos/{videoId}/thumbnail.jpg
+ * Storage layout (mirrors S3 layout exactly — easy to swap back to S3 later):
+ *
+ *   ./bytestream-storage/
+ *       videos/
+ *           {videoId}/
+ *               playlist.m3u8
+ *               segment_000.ts
+ *               segment_001.ts
+ *               thumbnail.jpg
+ *
+ * Files are served at:
+ *   http://localhost:8080/videos/files/videos/{videoId}/playlist.m3u8
+ *
+ * The URL structure is intentionally identical to what S3 would serve.
+ * When you're ready to switch to S3 later, only this class changes.
  */
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class StorageService {
 
-    private final S3Client s3Client;
+    @Value("${storage.local.base-dir}")
+    private String baseDir;
 
-    @Value("${aws.s3.bucket-name}")
-    private String bucketName;
-
-    @Value("${aws.region}")
-    private String region;
+    @Value("${storage.local.base-url}")
+    private String baseUrl;
 
     /**
-     * Uploads all files in the given directory to S3 under videos/{videoId}/.
-     * Returns the public URL of the HLS manifest (playlist.m3u8).
+     * Copies all HLS output files into local storage.
+     * Returns the public URL of the manifest (playlist.m3u8).
      */
     public String uploadHlsOutput(UUID videoId, Path hlsDirectory) throws IOException {
-        log.info("Uploading HLS output for video {} from {}", videoId, hlsDirectory);
+        Path destination = resolveVideoDir(videoId);
+        Files.createDirectories(destination);
 
-        List<Path> files;
-        try (var stream = Files.list(hlsDirectory)) {
-            files = stream.toList();
+        log.info("Copying HLS output for video {} to {}", videoId, destination);
+
+        try (var files = Files.list(hlsDirectory)) {
+            for (Path file : files.toList()) {
+                Path target = destination.resolve(file.getFileName());
+                Files.copy(file, target, StandardCopyOption.REPLACE_EXISTING);
+                log.debug("Copied {} to {}", file.getFileName(), target);
+            }
         }
 
-        for (Path file : files) {
-            String s3Key = "videos/" + videoId + "/" + file.getFileName().toString();
-            uploadFile(file, s3Key, contentTypeFor(file.getFileName().toString()));
-            log.debug("Uploaded {} -> s3://{}/{}", file.getFileName(), bucketName, s3Key);
-        }
-
-        String manifestKey = "videos/" + videoId + "/playlist.m3u8";
-        String manifestUrl = buildPublicUrl(manifestKey);
-        log.info("HLS upload complete for video {}. Manifest: {}", videoId, manifestUrl);
+        String manifestUrl = buildUrl(videoId, "playlist.m3u8");
+        log.info("HLS output stored for video {}. Manifest URL: {}", videoId, manifestUrl);
         return manifestUrl;
     }
 
     /**
-     * Uploads a single thumbnail file.
+     * Copies the thumbnail into local storage.
+     * Returns the public URL.
      */
     public String uploadThumbnail(UUID videoId, Path thumbnailPath) throws IOException {
-        String s3Key = "videos/" + videoId + "/thumbnail.jpg";
-        uploadFile(thumbnailPath, s3Key, "image/jpeg");
-        return buildPublicUrl(s3Key);
+        Path destination = resolveVideoDir(videoId);
+        Files.createDirectories(destination);
+
+        Path target = destination.resolve("thumbnail.jpg");
+        Files.copy(thumbnailPath, target, StandardCopyOption.REPLACE_EXISTING);
+
+        String url = buildUrl(videoId, "thumbnail.jpg");
+        log.info("Thumbnail stored for video {}: {}", videoId, url);
+        return url;
     }
 
     /**
-     * Deletes all S3 objects under videos/{videoId}/.
-     * Called when a video is deleted via the API.
+     * Deletes the entire directory for a video.
+     * Called when DELETE /videos/{id} is hit.
      */
-    public void deleteVideoFiles(UUID videoId) {
-        String prefix = "videos/" + videoId + "/";
-        log.info("Deleting S3 objects with prefix: {}", prefix);
+    public void deleteVideoFiles(UUID videoId) throws IOException {
+        Path videoDir = resolveVideoDir(videoId);
 
-        // List all objects under this video's prefix
-        ListObjectsV2Request listRequest = ListObjectsV2Request.builder()
-                .bucket(bucketName)
-                .prefix(prefix)
-                .build();
-
-        ListObjectsV2Response listResponse = s3Client.listObjectsV2(listRequest);
-
-        if (listResponse.contents().isEmpty()) {
-            log.warn("No S3 objects found for prefix: {}", prefix);
+        if (!Files.exists(videoDir)) {
+            log.warn("No local storage directory found for video {}. Skipping delete.", videoId);
             return;
         }
 
-        // Build delete request for all found objects
-        List<ObjectIdentifier> objectsToDelete = listResponse.contents().stream()
-                .map(obj -> ObjectIdentifier.builder().key(obj.key()).build())
-                .toList();
+        // Walk and delete deepest files first, then the directory itself
+        Files.walk(videoDir)
+                .sorted(Comparator.reverseOrder())
+                .forEach(path -> {
+                    try {
+                        Files.deleteIfExists(path);
+                    } catch (IOException e) {
+                        log.warn("Could not delete {}: {}", path, e.getMessage());
+                    }
+                });
 
-        DeleteObjectsRequest deleteRequest = DeleteObjectsRequest.builder()
-                .bucket(bucketName)
-                .delete(Delete.builder().objects(objectsToDelete).build())
-                .build();
-
-        s3Client.deleteObjects(deleteRequest);
-        log.info("Deleted {} S3 objects for video {}", objectsToDelete.size(), videoId);
+        log.info("Deleted local storage for video {}", videoId);
     }
 
-    // ── Private helpers ──────────────────────────────────────────────────────
+    // ── Helpers ──────────────────────────────────────────────────────────────
 
-    private void uploadFile(Path localPath, String s3Key, String contentType) throws IOException {
-        PutObjectRequest request = PutObjectRequest.builder()
-                .bucket(bucketName)
-                .key(s3Key)
-                .contentType(contentType)
-                // Make objects publicly readable so the HLS player can fetch segments directly.
-                // For private content you'd remove this and use pre-signed URLs instead.
-                .acl(ObjectCannedACL.PUBLIC_READ)
-                .build();
-
-        s3Client.putObject(request, RequestBody.fromFile(localPath));
+    private Path resolveVideoDir(UUID videoId) {
+        return Paths.get(baseDir, "videos", videoId.toString());
     }
 
-    private String buildPublicUrl(String s3Key) {
-        return "https://" + bucketName + ".s3." + region + ".amazonaws.com/" + s3Key;
-    }
-
-    private String contentTypeFor(String filename) {
-        if (filename.endsWith(".m3u8")) return "application/x-mpegURL";
-        if (filename.endsWith(".ts"))   return "video/MP2T";
-        if (filename.endsWith(".jpg"))  return "image/jpeg";
-        return "application/octet-stream";
+    private String buildUrl(UUID videoId, String filename) {
+        // baseUrl = http://localhost:8080/videos/files
+        // Result  = http://localhost:8080/videos/files/videos/{videoId}/playlist.m3u8
+        return baseUrl + "/videos/" + videoId + "/" + filename;
     }
 }
