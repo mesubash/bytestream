@@ -1,13 +1,11 @@
 import { useState, useRef } from "react";
 import { useLocation } from "wouter";
-import axios from "axios";
+import { api } from "@/lib/api";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Upload as UploadIcon, X, FileVideo, CheckCircle2, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 
 export default function Upload() {
   const [_, setLocation] = useLocation();
@@ -49,12 +47,7 @@ export default function Upload() {
     formData.append("file", file);
 
     try {
-      await axios.post(`${API_BASE}/api/videos/upload`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-        onUploadProgress: (e) => {
-          setProgress(Math.round((e.loaded * 100) / (e.total ?? 1)));
-        },
-      });
+      await api.uploadVideo(file, title, (percent) => setProgress(percent));
 
       toast({ variant: "success", title: "Upload successful", description: "Your video is now processing." });
       setTimeout(() => setLocation("/dashboard"), 1500);
@@ -103,7 +96,7 @@ export default function Upload() {
                     <UploadIcon className="w-8 h-8 text-muted-foreground group-hover:text-primary transition-colors" />
                   </div>
                   <h3 className="text-lg font-medium text-white mb-1">Select a video file</h3>
-                  <p className="text-sm text-muted-foreground">MP4, WebM, or MOV up to 2GB</p>
+                  <p className="text-sm text-muted-foreground">MP4, MKV, or MOV up to 500MB</p>
                   <input
                     type="file"
                     accept="video/*"

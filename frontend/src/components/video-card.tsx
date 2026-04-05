@@ -1,17 +1,17 @@
 import React, { useRef, useState } from "react";
 import { Link } from "wouter";
-import { type Video } from "@/lib/api";
+import { type VideoSummary } from "@/lib/api";
 import { formatDuration } from "@/lib/utils";
 import { PlayCircle, Clock, AlertCircle, Loader2 } from "lucide-react";
 
 interface VideoCardProps {
-  video: Video;
+  video: VideoSummary;
 }
 
 export function VideoCard({ video }: VideoCardProps) {
-  const isReady = video.status === "ready";
-  const isProcessing = video.status === "processing";
-  const isFailed = video.status === "failed";
+  const isReady = video.status === "READY";
+  const isProcessing = video.status === "PROCESSING" || video.status === "UPLOADING";
+  const isFailed = video.status === "FAILED";
 
   const cardRef = useRef<HTMLDivElement>(null);
   const [style, setStyle] = useState({});
@@ -81,10 +81,10 @@ export function VideoCard({ video }: VideoCardProps) {
           )}
         </div>
 
-        {isReady && video.duration && (
+        {isReady && video.durationSeconds && (
           <div className="absolute bottom-2 right-2 px-2 py-1 rounded-md bg-black/80 backdrop-blur-md text-xs font-medium text-white flex items-center gap-1.5 shadow-lg border border-white/10">
             <Clock className="w-3 h-3 text-primary" />
-            {formatDuration(video.duration)}
+            {formatDuration(video.durationSeconds)}
           </div>
         )}
       </div>
@@ -94,7 +94,7 @@ export function VideoCard({ video }: VideoCardProps) {
           {video.title}
         </h3>
         <p className="mt-2 text-xs text-muted-foreground">
-          {new Date(video.uploadedAt).toLocaleDateString(undefined, {
+          {new Date(video.createdAt).toLocaleDateString(undefined, {
             year: "numeric",
             month: "short",
             day: "numeric",
